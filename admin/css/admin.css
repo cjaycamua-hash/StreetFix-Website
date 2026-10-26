@@ -1,0 +1,18 @@
+/* One admin page per view: sections carry data-view and only the active page's sections show. */
+body[data-page="dashboard"] main [data-view]:not([data-view~="dashboard"]),
+body[data-page="reports"] main [data-view]:not([data-view~="reports"]),
+body[data-page="map"] main [data-view]:not([data-view~="map"]),
+body[data-page="users"] main [data-view]:not([data-view~="users"]),
+body[data-page="logs"] main [data-view]:not([data-view~="logs"]),
+body[data-page="settings"] main [data-view]:not([data-view~="settings"]){display:none}
+.group{margin:6px 0 0}
+.group summary{cursor:pointer;color:var(--or);font-weight:600;font-size:12px}
+.group ul{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:6px}
+.group li{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:12px}
+.group li small{display:block}
+.group .acts{margin-top:6px}
+.sevs{white-space:nowrap}
+.sev-sep{margin:0 3px;color:var(--mut)}
+.count-cell{font-weight:700;font-size:16px;text-align:center}
+.count-cell small{font-weight:400;font-size:11px}
+.tabs button .n{opacity:.7;font-size:12px;margin-left:4px}

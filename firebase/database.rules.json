@@ -1,0 +1,15 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "reportImages": {
+      "$code": {
+        "$key": {
+          ".read": "auth != null",
+          ".write": "auth != null && $code.matches(/^SF-[0-9]+$/) && ((!data.exists() && newData.exists()) || (data.exists() && !newData.exists() && data.child('ownerUid').val() === auth.uid))",
+          ".validate": "!newData.exists() || (newData.hasChildren(['contentType', 'imageData']) && newData.child('imageData').isString() && newData.child('imageData').val().length < 12000000 && (newData.child('contentType').val() === 'image/jpeg' || newData.child('contentType').val() === 'image/png' || newData.child('contentType').val() === 'image/webp'))"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+.git
+config/firebase-service-account.json
+config/cache/*
+config/sessions/*

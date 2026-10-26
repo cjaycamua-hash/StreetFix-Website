@@ -1,0 +1,113 @@
+rules_version = '2';
+// StreetFix Firestore rules (deploy to the same Firebase project the website and app use).
+// The PHP website uses the Admin SDK (service account) and bypasses these rules; the mobile app is a client and is
+// bound by them. Auth uid -> uid_map/{uid}.user_id -> users/{user_id} gives the numeric StreetFix user, role, team, LGU.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function linkPath() { return /databases/$(database)/documents/uid_map/$(request.auth.uid); }
+    function hasLink() { return signedIn() && exists(linkPath()); }
+    function myId() { return get(linkPath()).data.user_id; }
+    function myIdInt() { return int(myId()); }
+    function me() { return get(/databases/$(database)/documents/users/$(myId())).data; }
+    function active() { return hasLink() && me().is_active != false; }
+    function isRole(r) { return active() && me().role == r; }
+    function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+    match /uid_map/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      // A new app account may link itself only to the users/{id} document created in the same batch.
+      allow create: if signedIn() && request.auth.uid == uid
+        && !exists(/databases/$(database)/documents/users/$(request.resource.data.user_id))
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.auth_uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /users/{id} {
+      allow read: if hasLink() && id == myId();
+      allow create: if signedIn()
+        && request.resource.data.auth_uid == request.auth.uid
+        && request.resource.data.role == 'citizen'
+        && request.resource.data.is_active == true
+        && request.resource.data.keys().hasOnly(['id','first_name','middle_name','last_name','name_extension','email','age',
+             'birthdate','contact_number','address','role','created_at','is_active','team_id','lgu_id','auth_uid'])
+        && getAfter(/databases/$(database)/documents/uid_map/$(request.auth.uid)).data.user_id == id;
+      allow update, delete: if false;   // profile edits stay on the website
+    }
+
+    match /lgus/{id} { allow read: if signedIn(); allow write: if false; }
+    match /maintenance_teams/{id} { allow read: if signedIn(); allow write: if false; }
+    match /system_settings/{key} {
+      allow read: if signedIn() && key in ['agency_name', 'agency_email'];
+      allow write: if false;
+    }
+
+    match /reports/{id} {
+      // NOTE: every active user can read report documents (needed for the community map and for maintenance
+      // task lookups). Reporter names/emails are not stored on report documents.
+      allow read: if active();
+      allow create: if isRole('citizen')
+        && request.resource.data.user_id == myIdInt()
+        && request.resource.data.status in ['Submitted', 'Duplicate']
+        && request.resource.data.photo_path == 'pending'
+        && request.resource.data.lgu_assignment_status == 'unverified'
+        && request.resource.data.assigned_lgu_id == null;
+      allow update: if
+        (isRole('citizen') && resource.data.user_id == myIdInt() && resource.data.photo_path == 'pending'
+          && onlyChanges(['photo_path', 'imageReference', 'updated_at']))
+        || (isRole('maintenance') && onlyChanges(['status', 'updated_at'])
+          && ((resource.data.status == 'Assigned' && request.resource.data.status == 'In Progress')
+            || (resource.data.status == 'In Progress' && request.resource.data.status == 'In Progress')
+            || (resource.data.status == 'In Progress' && request.resource.data.status == 'Resolved'
+                && resource.data.lgu_assignment_status == 'assigned' && resource.data.assigned_lgu_id == me().lgu_id)));
+      allow delete: if isRole('citizen') && resource.data.user_id == myIdInt() && resource.data.photo_path == 'pending';
+    }
+
+    match /report_photos/{id} {
+      allow read: if active();
+      allow create: if active() && request.resource.data.uploaded_by == myIdInt()
+        && ((me().role == 'citizen' && request.resource.data.photo_type == 'report')
+         || (me().role == 'maintenance' && request.resource.data.photo_type in ['before', 'after']));
+      allow update, delete: if false;
+    }
+
+    match /assignments/{id} {
+      allow read: if isRole('maintenance')
+        && (resource.data.maintenance_user_id == myIdInt() || resource.data.team_id == me().team_id);
+      allow write: if false;
+    }
+
+    match /status_history/{id} {
+      allow read: if active();
+      allow create: if active() && request.resource.data.changed_by == myIdInt();
+      allow update, delete: if false;
+    }
+
+    match /notifications/{id} {
+      allow read: if active() && resource.data.user_id == myIdInt();
+      allow create: if active() && request.resource.data.is_read == false
+        && request.resource.data.message.size() < 500
+        && request.resource.data.keys().hasOnly(['id','user_id','report_id','message','is_read','created_at']);
+      allow update: if active() && resource.data.user_id == myIdInt() && onlyChanges(['is_read']);
+      allow delete: if false;
+    }
+
+    match /lgu_notifications/{id} {
+      allow read: if isRole('maintenance') && resource.data.lgu_id == me().lgu_id;
+      allow write: if false;
+    }
+
+    match /repairs/{id} {
+      allow read: if isRole('maintenance');
+      allow create, update: if isRole('maintenance') && request.resource.data.maintenance_user_id == myIdInt();
+      allow delete: if false;
+    }
+
+    match /feedback/{id} {
+      allow read: if active() && resource.data.user_id == myIdInt();
+      allow write: if false;
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}

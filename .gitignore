@@ -1,0 +1,9 @@
+config/firebase-service-account.json
+*service-account*.json
+migration/out/
+migration/node_modules/
+migration/__pycache__/
+
+config/sessions/*
+!config/sessions/.gitkeep
+config/cache/
